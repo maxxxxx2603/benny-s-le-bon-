@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -217,9 +218,13 @@ async function registerCommands() {
             {
                 name: 'setdata',
                 description: 'Initialiser les données de Jayden Jonson (admin only)'
+            },
+            {
+                name: 'update-customs',
+                description: 'Mettre à jour les customs des employés (admin only)'
             }
         ]);
-        console.log('✅ Commandes /rc, /kit, /total-kit, /add, /up, /virer, /custom, /facture, /reset, /payes, /remuneration, /info, /reglement et /setdata enregistrées');
+        console.log('✅ Commandes /rc, /kit, /total-kit, /add, /up, /virer, /custom, /facture, /reset, /payes, /remuneration, /info, /reglement, /setdata et /update-customs enregistrées');
     } catch (error) {
         console.error('❌ Erreur lors de l\'enregistrement des commandes:', error);
     }
@@ -716,10 +721,14 @@ client.on('interactionCreate', async interaction => {
                 console.log(`✅ Employé viré: ${targetUser.tag}`);
             } catch (error) {
                 console.error('❌ Erreur /virer:', error);
-                if (interaction.deferred) {
-                    await interaction.editReply({ content: '❌ Une erreur est survenue lors du licenciement.' });
-                } else if (!interaction.replied) {
-                    await interaction.reply({ content: '❌ Une erreur est survenue.', ephemeral: true });
+                try {
+                    if (interaction.deferred && !interaction.replied) {
+                        await interaction.editReply({ content: '❌ Une erreur est survenue lors du licenciement.' });
+                    } else if (!interaction.replied) {
+                        await interaction.reply({ content: '❌ Une erreur est survenue.', ephemeral: true });
+                    }
+                } catch (replyError) {
+                    console.error('❌ Impossible de répondre à l\'interaction:', replyError.message);
                 }
             }
         }
@@ -1158,6 +1167,81 @@ client.on('interactionCreate', async interaction => {
                 console.log('✅ Commande /setdata exécutée');
             } catch (error) {
                 console.error('❌ Erreur /setdata:', error);
+                await interaction.editReply({ content: '❌ Une erreur est survenue.' });
+            }
+        }
+        // Slash command /update-customs
+        if (interaction.commandName === 'update-customs') {
+            try {
+                // Permission admin uniquement
+                const isAdmin = interaction.memberPermissions && interaction.memberPermissions.has(PermissionFlagsBits.Administrator);
+                if (!isAdmin) {
+                    return interaction.reply({ content: '❌ Seuls les administrateurs peuvent utiliser cette commande.', ephemeral: true });
+                }
+
+                await interaction.deferReply({ ephemeral: true });
+
+                // Données des employés avec montants de factures
+                const employeeUpdates = [
+                    { name: "Jayden Jonson", customs: 50, total: 68083029, userId: "1459346829903790122" },
+                    { name: "Abdoul Riad", customs: 11, total: 19896328, userId: "1019323017567948850" },
+                    { name: "Mike Luipo", customs: 16, total: 16275102, userId: "803761800049852467" },
+                    { name: "Baloo", customs: 46, total: 39488330, userId: "694189347574120601" },
+                    { name: "James Saint-Patrick", customs: 4, total: 7319240, userId: "1314930947845521428" },
+                    { name: "Ethan LaGuerta", customs: 10, total: 5566480, userId: "1165009731472085204" },
+                    { name: "Many Mayson", customs: 13, total: 8000000, userId: "469437726865752075" },
+                    { name: "Joe Jimenez", customs: 6, total: 3000000, userId: "663710800262725652" }
+                ];
+
+                const customs = loadCustoms();
+                if (!customs.customs) customs.customs = [];
+                if (!customs.quotas) customs.quotas = {};
+
+                // Types de custom à alterner
+                const types = [
+                    { type: 'boutique', label: '🛍️ Boutique' },
+                    { type: 'import', label: '📦 Import' },
+                    { type: 'gta_online', label: '🎮 GTA Online' }
+                ];
+
+                // Créer les factures pour chaque employé
+                let totalCreated = 0;
+                for (const employee of employeeUpdates) {
+                    const montantMoyen = Math.floor(employee.total / employee.customs);
+                    
+                    // Créer les customs pour cet employé
+                    for (let i = 0; i < employee.customs; i++) {
+                        const typeIndex = i % types.length;
+                        const custom = {
+                            id: Date.now() + totalCreated,
+                            userId: employee.userId,
+                            userTag: employee.name,
+                            type: types[typeIndex].type,
+                            typeLabel: types[typeIndex].label,
+                            montant: montantMoyen,
+                            imageUrl: 'https://via.placeholder.com/400',
+                            timestamp: Date.now() + totalCreated
+                        };
+                        customs.customs.push(custom);
+                        totalCreated++;
+                    }
+                    
+                    // Mettre à jour le quota
+                    customs.quotas[employee.userId] = employee.customs;
+                }
+
+                saveCustoms(customs);
+
+                let updateMessage = '✅ **Customs et factures créées :**\n\n';
+                for (const employee of employeeUpdates) {
+                    const fmt = new Intl.NumberFormat('fr-FR');
+                    updateMessage += `• **${employee.name}** : ${employee.customs} customs - ${fmt.format(employee.total)}$\n`;
+                }
+
+                await interaction.editReply({ content: updateMessage });
+                console.log(`✅ Commande /update-customs exécutée - ${totalCreated} factures créées`);
+            } catch (error) {
+                console.error('❌ Erreur /update-customs:', error);
                 await interaction.editReply({ content: '❌ Une erreur est survenue.' });
             }
         }
